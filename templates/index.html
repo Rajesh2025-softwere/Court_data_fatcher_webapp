@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Indian eCourts Data Fetcher (Python/Flask)</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .container-shadow {
+            box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 sm:p-8 font-sans">
+
+    <div class="max-w-4xl mx-auto space-y-8">
+        <header class="text-center py-6 bg-white rounded-xl container-shadow">
+            <h1 class="text-3xl font-extrabold text-indigo-800 tracking-tight">
+                Indian Court Data Fetcher
+            </h1>
+            <p class="text-gray-500 mt-2">Case Search, Judgment, and Cause List </p>
+        </header>
+
+        <!-- Search Form Card -->
+        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+            <h2 class="text-xl font-bold text-indigo-600 mb-6">Case Search</h2>
+            
+            <div id="status-message" class="hidden p-3 mb-4 rounded-lg font-medium"></div>
+
+            <form id="search-form" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Mock Case Type Dropdown -->
+                    <label class="block">
+                        <span class="text-gray-700">Case Type</span>
+                        <select id="case-type" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="">Select Case Type</option>
+                            <option value="HMA">Hindu Marriage Act (HMA)</option>
+                            <option value="CS">Civil Suit (CS)</option>
+                            <option value="CRMP">Criminal Misc. Petition (CRMP)</option>
+                            <option value="OTH">Other (OTH)</option>
+                        </select>
+                    </label>
+                    
+                    <!-- Case Number Input -->
+                    <label class="block">
+                        <span class="text-gray-700">Case Number</span>
+                        <input type="number" id="case-number" placeholder="e.g., 133 or 99" required
+                            class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                    </label>
+
+                    <!-- Filing Year Input -->
+                    <label class="block">
+                        <span class="text-gray-700">Filing Year</span>
+                        <input type="number" id="year" placeholder="e.g., 2025 or 2024" required
+                            class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                    </label>
+                </div>
+
+                <!-- CAPTCHA Section -->
+                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                    <h3 class="text-lg font-semibold text-gray-800">Solve CAPTCHA to Search</h3>
+                    <div class="flex items-center space-x-4">
+                        <div id="captcha-display" class="px-6 py-2 bg-white border-2 border-indigo-600 rounded-lg text-2xl font-bold tracking-widest select-none shadow-inner">
+                            Loading...
+                        </div>
+                        <button type="button" id="refresh-captcha" class="flex items-center px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M21.5 2v6h-6"/><path d="M2.5 22v-6h6"/><path d="M21.5 8a9 9 0 0 0-18 0"/><path d="M2.5 16a9 9 0 0 0 18 0"/></svg>
+                            Refresh
+                        </button>
+                    </div>
+                    
+                    <label class="block">
+                        <span class="text-gray-700">Enter CAPTCHA Text</span>
+                        <input type="text" id="captcha-solution" placeholder="Enter the text above" required
+                            class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 uppercase">
+                    </label>
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" id="search-button" class="w-full px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition shadow-md flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        Search Case
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Case Details Display -->
+        <div id="case-results" class="hidden bg-white p-6 rounded-xl shadow-lg border border-gray-200 space-y-6">
+            <h2 class="text-xl font-bold text-green-600 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
+                Case Details Found
+            </h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-b pb-4">
+                <p><span class="font-semibold text-gray-700">Case Type:</span> <span id="display-case-type"></span></p>
+                <p><span class="font-semibold text-gray-700">Case No/Year:</span> <span id="display-case-number"></span>/<span id="display-year"></span></p>
+                <p><span class="font-semibold text-gray-700">Filing Date:</span> <span id="display-filing-date"></span></p>
+                <p><span class="font-semibold text-gray-700">Next Hearing:</span> <span id="display-next-hearing" class="font-bold text-red-500"></span></p>
+            </div>
+
+            <div class="border-b pb-4">
+                <h3 class="font-bold text-lg text-gray-800 mb-2">Parties</h3>
+                <p><span class="font-semibold text-gray-700">Petitioner:</span> <span id="display-petitioner"></span></p>
+                <p><span class="font-semibold text-gray-700">Respondent:</span> <span id="display-respondent"></span></p>
+            </div>
+            
+            <div class="border-b pb-4">
+                <h3 class="font-bold text-lg text-gray-800 mb-2">Status & Court</h3>
+                <p><span class="font-semibold text-gray-700">Status:</span> <span id="display-status" class="font-bold"></span></p>
+                <p><span class="font-semibold text-gray-700">Court:</span> <span id="display-court"></span></p>
+                <p><span class="font-semibold text-gray-700">Judge:</span> <span id="display-judge"></span></p>
+            </div>
+
+            <!-- Download Orders/Judgments -->
+            <div id="orders-section">
+                <h3 class="font-bold text-lg text-gray-800 mb-3">Orders & Judgments</h3>
+                <div id="orders-list" class="space-y-2">
+                    <!-- Orders will be injected here -->
+                </div>
+            </div>
+
+            <!-- Cause List Button -->
+            <div class="pt-4 flex flex-col sm:flex-row gap-4">
+                <button type="button" id="download-causelist-btn" class="flex-1 px-6 py-3 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition shadow-md flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M8 2h8"/><path d="M12 17v-8"/><path d="M12 17v-8"/><rect x="4" y="5" width="16" height="16" rx="2"/></svg>
+                    Download Today's Cause List
+                </button>
+                <button type="button" onclick="location.reload()" class="flex-1 px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600 transition shadow-md flex items-center justify-center">
+                    New Search
+                </button>
+            </div>
+        </div>
+
+        <!-- Query Logs Display -->
+        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+            <h2 class="text-xl font-bold text-gray-700 mb-4">Query History (Database Storage)</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Case</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raw Response</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-table-body" class="bg-white divide-y divide-gray-200">
+                        <tr><td colspan="4" class="text-center py-4 text-sm text-gray-500">Loading history...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-xs text-gray-500 mt-4">*Note: Query logs are stored in the SQLite/Postgres database via Flask/SQLAlchemy.</p>
+        </div>
+
+    </div>
+
+    <script>
+        const statusMessage = document.getElementById('status-message');
+        const searchForm = document.getElementById('search-form');
+        const caseResults = document.getElementById('case-results');
+        const captchaDisplay = document.getElementById('captcha-display');
+        const refreshCaptchaButton = document.getElementById('refresh-captcha');
+        const searchButton = document.getElementById('search-button');
+        const logsTableBody = document.getElementById('logs-table-body');
+        
+        let generatedCaptchaValue = '';
+        // FIX: Reverting to the leading slash '/api' to correctly resolve the API endpoint from the application's root path, which is typical for Flask backend routing.
+        const BASE_API_URL = '/api'; 
+
+        function showStatus(message, type = 'info') {
+            statusMessage.textContent = message;
+            statusMessage.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700');
+            if (type === 'error') {
+                statusMessage.classList.add('bg-red-100', 'text-red-700');
+            } else {
+                statusMessage.classList.add('bg-green-100', 'text-green-700');
+            }
+        }
+        
+        function hideStatus() {
+            statusMessage.classList.add('hidden');
+        }
+
+        async function fetchNewCaptcha() {
+            try {
+                captchaDisplay.textContent = 'Loading...';
+                // Use BASE_API_URL with a leading slash for root-based path resolution
+                const response = await fetch(`${BASE_API_URL}/generate_captcha`);
+                const data = await response.json();
+                if (data.status === 'success') {
+                    generatedCaptchaValue = data.captcha;
+                    captchaDisplay.textContent = data.captcha;
+                } else {
+                    captchaDisplay.textContent = 'Error';
+                    showStatus('Failed to load CAPTCHA.', 'error');
+                }
+            } catch (error) {
+                console.error('CAPTCHA Fetch Error:', error);
+                captchaDisplay.textContent = 'Error';
+                showStatus('Network error while fetching CAPTCHA.', 'error');
+            }
+        }
+
+        async function fetchLogs() {
+            try {
+                // Use BASE_API_URL with a leading slash for root-based path resolution
+                const response = await fetch(`${BASE_API_URL}/logs`);
+                const logs = await response.json();
+                
+                logsTableBody.innerHTML = '';
+                if (logs.length === 0) {
+                    logsTableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-sm text-gray-500">No logs yet.</td></tr>';
+                    return;
+                }
+
+                logs.forEach(log => {
+                    const statusClass = log.status.includes('Success') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                    const row = `
+                        <tr>
+                            <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">${log.timestamp}</td>
+                            <td class="px-3 py-2 whitespace-nowrap text-sm font-medium text-indigo-600">${log.case_type} ${log.case_number}/${log.filing_year}</td>
+                            <td class="px-3 py-2 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}">
+                                    ${log.status}
+                                </span>
+                            </td>
+                            <td class="px-3 py-2 text-sm text-gray-700 font-mono text-xs max-w-xs overflow-hidden truncate" title="${log.raw_response_snippet}">${log.raw_response_snippet}</td>
+                        </tr>
+                    `;
+                    logsTableBody.innerHTML += row;
+                });
+
+            } catch (error) {
+                console.error('Log Fetch Error:', error);
+                logsTableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-sm text-red-500">Failed to load logs.</td></tr>';
+            }
+        }
+
+        function displayCaseDetails(data, caseNumber, year) {
+            caseResults.classList.remove('hidden');
+            searchForm.classList.add('hidden');
+            
+            document.getElementById('display-case-type').textContent = data.caseType;
+            document.getElementById('display-case-number').textContent = caseNumber;
+            document.getElementById('display-year').textContent = year;
+            document.getElementById('display-filing-date').textContent = data.filingDate;
+            document.getElementById('display-next-hearing').textContent = data.nextHearingDate;
+            
+            document.getElementById('display-petitioner').textContent = data.parties.petitioner;
+            document.getElementById('display-respondent').textContent = data.parties.respondent;
+            
+            document.getElementById('display-court').textContent = data.court;
+            document.getElementById('display-judge').textContent = data.judge;
+            
+            const statusElement = document.getElementById('display-status');
+            statusElement.textContent = data.caseStatus;
+            statusElement.classList.remove('text-green-600', 'text-yellow-600');
+            statusElement.classList.add(data.caseStatus === 'Disposed' ? 'text-green-600' : 'text-yellow-600');
+
+            // Populate Orders List
+            const ordersList = document.getElementById('orders-list');
+            ordersList.innerHTML = '';
+            if (data.orders && data.orders.length > 0) {
+                data.orders.forEach(order => {
+                    const orderItem = document.createElement('div');
+                    orderItem.className = 'flex justify-between items-center bg-gray-50 p-3 rounded-lg border';
+                    orderItem.innerHTML = `
+                        <p class="text-sm font-medium text-gray-800">${order.date}: ${order.details}</p>
+                        <a href="${BASE_API_URL}/download/${order.url}" 
+                           class="flex items-center text-sm px-3 py-1 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 transition"
+                           download="${order.url}">
+                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1"><path d="M12 17v-8"/><path d="M8 13l4 4 4-4"/><path d="M5 21h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2z"/></svg>
+                           Download
+                        </a>
+                    `;
+                    ordersList.appendChild(orderItem);
+                });
+            } else {
+                ordersList.innerHTML = '<p class="text-sm text-gray-500">No orders or judgments found for this case.</p>';
+            }
+
+            // Set up Cause List Download
+            // Updated to ensure correct path construction
+            const causeListBtn = document.getElementById('download-causelist-btn');
+            causeListBtn.href = `${BASE_API_URL}/download/causelist_${data.court.replace(/\s/g, '_')}_${data.nextHearingDate}.pdf`;
+        }
+
+        // --- Event Listeners ---
+        
+        refreshCaptchaButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            fetchNewCaptcha();
+        });
+
+        searchForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideStatus();
+            searchButton.disabled = true;
+            searchButton.textContent = 'Searching...';
+            caseResults.classList.add('hidden');
+            
+            const caseType = document.getElementById('case-type').value;
+            const caseNumber = document.getElementById('case-number').value;
+            const year = document.getElementById('year').value;
+            const captchaSolution = document.getElementById('captcha-solution').value;
+
+            if (!caseType || !caseNumber || !year || !captchaSolution) {
+                showStatus('Please fill in all fields (Case Type, Number, Year, and CAPTCHA).', 'error');
+                searchButton.disabled = false;
+                searchButton.textContent = 'Search Case';
+                return;
+            }
+
+            try {
+                // Use BASE_API_URL with a leading slash for root-based path resolution
+                const response = await fetch(`${BASE_API_URL}/search_case`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        caseType: caseType,
+                        caseNumber: caseNumber,
+                        year: year,
+                        captchaSolution: captchaSolution,
+                        generatedCaptcha: generatedCaptchaValue
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showStatus('Case found and data logged successfully!', 'success');
+                    displayCaseDetails(result.data, caseNumber, year);
+                } else {
+                    showStatus(result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Search API Error:', error);
+                showStatus('An unexpected error occurred during the search.', 'error');
+            } finally {
+                searchButton.disabled = false;
+                searchButton.textContent = 'Search Case';
+                document.getElementById('captcha-solution').value = '';
+                fetchNewCaptcha(); // Reset CAPTCHA after search attempt
+                fetchLogs(); // Refresh logs after query attempt
+            }
+        });
+
+        // Initial setup on load
+        window.onload = () => {
+            fetchNewCaptcha();
+            fetchLogs();
+            // Automatically select HMA 133/2025 as an example case for easy testing
+            document.getElementById('case-type').value = 'HMA';
+            document.getElementById('case-number').value = '133';
+            document.getElementById('year').value = '2025';
+        };
+
+    </script>
+</body>
+</html>
